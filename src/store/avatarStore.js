@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 // Avatar states
 export const AVATAR_STATES = {
+  GREETING: 'GREETING',
   IDLE: 'IDLE',
   LISTENING: 'LISTENING',
   THINKING: 'THINKING',
@@ -11,7 +12,8 @@ export const AVATAR_STATES = {
 
 // Valid state transitions
 const VALID_TRANSITIONS = {
-  [AVATAR_STATES.IDLE]: [AVATAR_STATES.LISTENING, AVATAR_STATES.SPEAKING, AVATAR_STATES.EMOTING],
+  [AVATAR_STATES.GREETING]: [AVATAR_STATES.IDLE],
+  [AVATAR_STATES.IDLE]: [AVATAR_STATES.LISTENING, AVATAR_STATES.SPEAKING, AVATAR_STATES.EMOTING, AVATAR_STATES.GREETING],
   [AVATAR_STATES.LISTENING]: [AVATAR_STATES.THINKING, AVATAR_STATES.IDLE],
   [AVATAR_STATES.THINKING]: [AVATAR_STATES.SPEAKING, AVATAR_STATES.IDLE],
   [AVATAR_STATES.SPEAKING]: [AVATAR_STATES.IDLE, AVATAR_STATES.LISTENING, AVATAR_STATES.EMOTING],
@@ -20,30 +22,33 @@ const VALID_TRANSITIONS = {
 
 const useAvatarStore = create((set, get) => ({
   // State machine
-  avatarState: AVATAR_STATES.IDLE,
+  avatarState: AVATAR_STATES.GREETING,
   previousState: null,
+  greetingDone: false,
 
   // Conversation
   messages: [],
   currentTranscript: '',
   currentResponse: '',
-  detectedLanguage: 'en-IN',
+  detectedLanguage: 'en-US',
 
   // Audio
   isMicActive: false,
   isAudioPlaying: false,
   audioAnalyserData: new Float32Array(128),
   micVolume: 0,
+  avatarUrl: '/models/avatar.glb', // Default model
 
   // UI
   isLoading: true,
+  showAvaturn: false,
   loadingProgress: 0,
   error: null,
   showSettings: false,
 
   // Settings
   settings: {
-    language: 'en-IN',
+    language: 'en-US',
     voiceSpeed: 1.0,
     speaker: 'shubh',
     pushToTalk: true,
@@ -109,6 +114,8 @@ const useAvatarStore = create((set, get) => ({
   setError: (error) => set({ error }),
   clearError: () => set({ error: null }),
   toggleSettings: () => set((state) => ({ showSettings: !state.showSettings })),
+  setAvatarUrl: (url) => set({ avatarUrl: url }),
+  toggleAvaturn: () => set((state) => ({ showAvaturn: !state.showAvaturn })),
 
   // Settings
   updateSettings: (newSettings) =>
@@ -119,6 +126,7 @@ const useAvatarStore = create((set, get) => ({
   // Gesture
   setActiveGesture: (gesture) => set({ activeGesture: gesture }),
   setCurrentEmotion: (emotion) => set({ currentEmotion: emotion }),
+  setGreetingDone: () => set({ greetingDone: true }),
 
   // Get conversation context for API
   getConversationContext: () => {

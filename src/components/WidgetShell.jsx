@@ -2,9 +2,11 @@ import React, { Suspense, Component } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Environment, OrbitControls } from '@react-three/drei';
 import { EffectComposer, DepthOfField, Bloom } from '@react-three/postprocessing';
+import * as THREE from 'three';
 import AvatarModel from './Avatar/AvatarModel';
+import AvaturnEditor from './Avatar/AvaturnEditor';
 import { ControlBar } from './ControlBar';
-import useAvatarStore from '../store/avatarStore';
+import useAvatarStore, { AVATAR_STATES } from '../store/avatarStore';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -31,50 +33,58 @@ class ErrorBoundary extends Component {
 
 export function WidgetShell() {
   const currentResponse = useAvatarStore(s => s.currentResponse);
-  const avatarStore = useAvatarStore();
+  const avatarStore     = useAvatarStore();
+  const avatarState     = useAvatarStore(s => s.avatarState);
+  const isGreeting      = avatarState === AVATAR_STATES.GREETING;
   const isHeadless = navigator.webdriver || /HeadlessChrome/.test(navigator.userAgent);
 
   return (
     <div className="fixed bottom-4 right-4 w-80 h-96 flex flex-col z-50">
       
       {/* 3D Container Box */}
-      <div className="flex-1 relative bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
+      <div className="flex-1 relative overflow-hidden">
         
-        {/* Chat / Fallback Status Overhead */}
-        {currentResponse && (
-          <div className="absolute top-4 left-4 right-4 z-10 
-                          bg-white/10 backdrop-blur-md rounded-xl p-3 text-sm text-white border border-white/20 shadow-md transform transition-all max-h-24 overflow-y-auto">
-             {currentResponse}
-          </div>
-        )}
+        {/* Chat / Fallback Status Overhead - REMOVED per user request */}
 
         {/* 3D Canvas */}
         <ErrorBoundary>
         <Canvas
-          camera={{ position: [0, 1.45, 1.5], fov: 35 }}
-          gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: "high-performance" }}
+          dpr={[1, 2]}
+          camera={{ position: [0, 0.6, 3.2], fov: 45 }} // Moved back and down
+          gl={{ 
+            antialias: true, 
+            alpha: true, 
+            preserveDrawingBuffer: true, 
+            powerPreference: "high-performance",
+            toneMapping: THREE.ACESFilmicToneMapping,
+            outputColorSpace: THREE.SRGBColorSpace
+          }}
           shadows={true}
         >
-          <ambientLight intensity={0.6} />
-          <directionalLight position={[1, 2, 3]} intensity={1.5} castShadow />
+          <ambientLight intensity={1.2} />
+          <directionalLight position={[1, 2, 5]} intensity={2.5} castShadow />
           
           <Suspense fallback={<HtmlFallback />}>
-            <group position={[0, -0.4, 0]}>
+            <group position={[0, -0.65, 0]}> {/* Adjusted group Y */}
                <AvatarModel />
             </group>
             <Environment preset="apartment" blur={0.8} />
           </Suspense>
 
-          {/* Post Processing Effects - disabled for headless tests */}
           {!isHeadless && (
-            <EffectComposer disableNormalPass multisampling={4}>
-              <DepthOfField focusDistance={1} focalLength={0.02} bokehScale={2} height={480} />
-              <Bloom luminanceThreshold={1} luminanceSmoothing={0.9} height={300} intensity={0.5} />
+            <EffectComposer disableNormalPass multisampling={8}>
+              <DepthOfField 
+                focusDistance={3.2} 
+                focalLength={0.05} 
+                bokehScale={1.2} 
+                height={720} 
+              />
+              <Bloom luminanceThreshold={1.2} luminanceSmoothing={1.0} height={480} intensity={0.4} />
             </EffectComposer>
           )}
 
           <OrbitControls 
-            target={[0, 1.3, 0]} 
+            target={[0, 0.6, 0]} // Lowered target to center feet/body better
             enableZoom={false} 
             enablePan={false} 
             enableRotate={false} 
@@ -82,6 +92,45 @@ export function WidgetShell() {
         </Canvas>
 
         </ErrorBoundary>
+
+        {/* Greeting Overlay */}
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: '12px 16px',
+          background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, transparent 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          opacity: isGreeting ? 1 : 0,
+          transform: isGreeting ? 'translateY(0)' : 'translateY(6px)',
+          transition: 'opacity 0.6s ease, transform 0.6s ease',
+          pointerEvents: 'none',
+          zIndex: 10,
+        }}>
+          <div style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #60efff, #0061ff)',
+            boxShadow: '0 0 8px #60efff',
+            flexShrink: 0,
+            animation: isGreeting ? 'greetPulse 1.2s ease-in-out infinite' : 'none',
+          }} />
+          <p style={{
+            margin: 0,
+            color: '#fff',
+            fontSize: '13px',
+            fontWeight: 500,
+            fontFamily: 'Inter, system-ui, sans-serif',
+            letterSpacing: '0.01em',
+            textShadow: '0 1px 4px rgba(0,0,0,0.6)',
+          }}>
+            Hello! 👋 How can I help you today?
+          </p>
+        </div>
 
         {/* Store Progress Indicator */}
         {avatarStore.isLoading && (
@@ -94,7 +143,7 @@ export function WidgetShell() {
       </div>
 
       <ControlBar />
-
+      <AvaturnEditor />
     </div>
   );
 }
