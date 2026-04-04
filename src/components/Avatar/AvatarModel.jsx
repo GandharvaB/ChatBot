@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useEffect, Suspense } from 'react';
+import React, { useRef, useMemo, useEffect, Suspense, useImperativeHandle, forwardRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -93,12 +93,12 @@ const GESTURES = {
   }
 };
 
-export default function AvatarModel({ onHeadMeshesLinked }) {
+const AvatarModel = forwardRef(({ onHeadMeshesLinked }, ref) => {
   const avatarUrl = useAvatarStore((state) => state.avatarUrl);
   const { setLoadingProgress } = useAvatarStore.getState();
 
   // Load the realistic GLB with progress monitoring and Draco mesh support 
-  const gltf = useGLTF(avatarUrl, 'https://www.gstatic.com/draco/versioned/decoders/1.5.7/', true, (progress) => {
+  const gltf = useGLTF('/models/m1.glb', 'https://www.gstatic.com/draco/versioned/decoders/1.5.7/', true, (progress) => {
     if (progress.total > 0) {
       const p = Math.round((progress.loaded / progress.total) * 100);
       setLoadingProgress(p);
@@ -129,34 +129,34 @@ export default function AvatarModel({ onHeadMeshesLinked }) {
   });
 
   // Extract Rig and Morphs
-  const { boneMap, morphMeshes } = useMemo(() => {
+  const linkedData = useMemo(() => {
+    const BONE_NAMES = {
+      Hips: ['Hips', 'pelvis'],
+      Spine: ['Spine', 'spine'],
+      Spine1: ['Spine1', 'spine_01'],
+      Spine2: ['Spine2', 'spine_02'],
+      Neck: ['Neck', 'neck'],
+      Head: ['Head', 'head'],
+      LeftShoulder: ['LeftShoulder', 'shoulder_L'],
+      RightShoulder: ['RightShoulder', 'shoulder_R'],
+      LeftArm: ['LeftArm', 'upper_arm_L', 'leftuparm'],
+      RightArm: ['RightArm', 'upper_arm_R', 'rightuparm'],
+      LeftForeArm: ['LeftForeArm', 'lower_arm_L'],
+      RightForeArm: ['RightForeArm', 'lower_arm_R'],
+      LeftHand: ['LeftHand', 'hand_L'],
+      RightHand: ['RightHand', 'hand_R'],
+      LeftEye: ['LeftEye', 'eye_l'],
+      RightEye: ['RightEye', 'eye_r'],
+    };
+
     const map = {};
+    Object.keys(BONE_NAMES).forEach(key => {
+      map[key] = findBone(scene, BONE_NAMES[key]);
+    });
 
-    // Fuzzy match standard humanoid bones
-    map.Hips = findBone(scene, ['hips', 'pelvis']);
-    map.Spine = findBone(scene, ['spine', 'spine1']);
-    map.Spine1 = findBone(scene, ['spine1', 'spine2']);
-    map.Spine2 = findBone(scene, ['spine2', 'chest']);
-    map.Neck = findBone(scene, ['neck']);
-    map.Head = findBone(scene, ['head']);
-
-    map.LeftShoulder = findBone(scene, ['leftshoulder', 'shoulder_l']);
-    map.LeftArm = findBone(scene, ['leftarm', 'upperarm_l', 'leftuparm']);
-    map.LeftForeArm = findBone(scene, ['leftforearm', 'lowerarm_l']);
-    map.LeftHand = findBone(scene, ['lefthand', 'hand_l']);
-
-    map.RightShoulder = findBone(scene, ['rightshoulder', 'shoulder_r']);
-    map.RightArm = findBone(scene, ['rightarm', 'upperarm_r', 'rightuparm']);
-    map.RightForeArm = findBone(scene, ['rightforearm', 'lowerarm_r']);
-    map.RightHand = findBone(scene, ['righthand', 'hand_r']);
-
-    map.LeftEye = findBone(scene, ['lefteye', 'eye_l']);
-    map.RightEye = findBone(scene, ['righteye', 'eye_r']);
-
-    // Find all meshes with morph targets
     const meshesWithMorphs = [];
     scene.traverse((node) => {
-      if (node.isSkinnedMesh || node.isMesh) {
+      if (node.isMesh) {
         if (node.morphTargetDictionary && node.morphTargetInfluences) {
           meshesWithMorphs.push(node);
         }
@@ -176,6 +176,15 @@ export default function AvatarModel({ onHeadMeshesLinked }) {
     return { boneMap: map, morphMeshes: meshesWithMorphs };
   }, [scene]);
 
+  const { boneMap, morphMeshes } = linkedData;
+
+  // Expose internals to animation/sync components (e.g., FaceAnimation)
+  useImperativeHandle(ref, () => ({
+    scene,
+    boneMap,
+    morphMeshes
+  }));
+
   // Normalization and Initialization
   useEffect(() => {
     if (scene) {
@@ -193,25 +202,25 @@ export default function AvatarModel({ onHeadMeshesLinked }) {
       scene.position.z = -newCenter.z;
       // Snap feet to floor
       scene.position.y = -newBox.min.y;
-    }
 
-    // Mathematically robust capture of base native Quaternions, ignoring gimbal axes
-    Object.keys(boneMap).forEach(key => {
-      if (boneMap[key]) {
-        initialQuatsRef.current[boneMap[key].uuid] = boneMap[key].quaternion.clone();
+      // Mathematically robust capture of base native Quaternions, ignoring gimbal axes
+      Object.keys(boneMap).forEach(key => {
+        if (boneMap[key]) {
+          initialQuatsRef.current[boneMap[key].uuid] = boneMap[key].quaternion.clone();
+        }
+      });
+
+      skeletonRef.current = boneMap;
+      morphMeshesRef.current = morphMeshes;
+
+      // Pass strictly connected morphs upward
+      if (onHeadMeshesLinked) {
+        onHeadMeshesLinked(morphMeshes);
       }
-    });
 
-    skeletonRef.current = boneMap;
-    morphMeshesRef.current = morphMeshes;
-
-    // Pass strictly connected morphs upward
-    if (onHeadMeshesLinked) {
-      onHeadMeshesLinked(morphMeshes);
+      useAvatarStore.getState().setLoadingProgress(100);
+      useAvatarStore.getState().setLoading(false);
     }
-
-    useAvatarStore.getState().setLoadingProgress(100);
-    useAvatarStore.getState().setLoading(false);
   }, [scene, boneMap, morphMeshes, onHeadMeshesLinked]);
 
   // Avoid garbage collection stutter
@@ -402,7 +411,7 @@ export default function AvatarModel({ onHeadMeshesLinked }) {
   return (
     <group position={[0, 0, 0]}>
       <primitive object={scene} />
-      <FaceAnimation morphMeshes={morphMeshesRef.current} />
+      <FaceAnimation morphMeshes={morphMeshes} boneMap={boneMap} />
       {avatarState === AVATAR_STATES.GREETING && (
         <Suspense fallback={null}>
           <GreetingAnimation scene={scene} />
@@ -415,7 +424,9 @@ export default function AvatarModel({ onHeadMeshesLinked }) {
       )}
     </group>
   );
-}
+});
+
+export default AvatarModel;
 
 // Preload to bypass visual snapping during initial mount loading lifecycle
-useGLTF.preload('/models/Avatar.glb');
+useGLTF.preload('/models/m1.glb');

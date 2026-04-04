@@ -80,7 +80,67 @@ export async function speechToText(audioBlob) {
   }
 }
 
-// Chat Completion using Sarvam AI
+// Streaming Chat Completion using Sarvam AI
+export async function* chatCompletionStream(messages, systemPrompt = null, signal = null) {
+  const currentDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const systemMessage = {
+    role: 'system',
+    content:
+      systemPrompt ||
+      `You are a friendly, intelligent AI assistant embodied as a 3D avatar. You communicate naturally and expressively. Keep responses concise (2-3 sentences) for natural conversation flow. You support multiple Indian languages and English. Match the language of the user's input. Be warm, helpful, and occasionally use natural gestures in your speech like greeting, explaining, or expressing uncertainty.
+IMPORTANT: The current real-time date and time is ${currentDate}. You must adapt your knowledge dynamically to the present day. If asked about current events or recently released hardware, act with the knowledge that it is currently ${currentDate}.`,
+  };
+
+  const response = await fetch('https://api.sarvam.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'sarvam-30b',
+      messages: [systemMessage, ...messages],
+      temperature: 0.7,
+      max_tokens: 300,
+      stream: true,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error?.message || 'Streaming failed');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      const cleanLine = line.replace(/^data: /, '').trim();
+      if (!cleanLine || cleanLine === '[DONE]') continue;
+
+      try {
+        const json = JSON.parse(cleanLine);
+        const content = json.choices[0]?.delta?.content || '';
+        if (content) yield content;
+      } catch (e) {
+        console.warn('Failed to parse SSE line:', cleanLine);
+      }
+    }
+  }
+}
+
+// Chat Completion using Sarvam AI (Legacy non-streaming for fallback)
 export async function chatCompletion(messages, systemPrompt = null) {
   try {
     const currentDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });

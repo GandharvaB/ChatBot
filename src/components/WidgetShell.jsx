@@ -35,7 +35,11 @@ export function WidgetShell() {
   const currentResponse = useAvatarStore(s => s.currentResponse);
   const avatarStore     = useAvatarStore();
   const avatarState     = useAvatarStore(s => s.avatarState);
+  const currentTranscript = useAvatarStore(s => s.currentTranscript);
   const isGreeting      = avatarState === AVATAR_STATES.GREETING;
+  const isListening     = avatarState === AVATAR_STATES.LISTENING;
+  const isThinking      = avatarState === AVATAR_STATES.THINKING;
+  const isPassive       = avatarState === AVATAR_STATES.PASSIVE;
   const isHeadless = navigator.webdriver || /HeadlessChrome/.test(navigator.userAgent);
 
   return (
@@ -130,6 +134,66 @@ export function WidgetShell() {
           }}>
             Hello! 👋 How can I help you today?
           </p>
+        </div>
+
+        {/* Siri-style Status Overlays */}
+        
+        {/* Phase 3: Listening Overlay */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          padding: '16px',
+          background: 'linear-gradient(to bottom, rgba(30,58,138,0.4) 0%, transparent 100%)',
+          opacity: isListening ? 1 : 0,
+          transform: isListening ? 'translateY(0)' : 'translateY(-10px)',
+          transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+          pointerEvents: 'none',
+          zIndex: 20
+        }}>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shadow-[0_0_8px_#60a5fa]" />
+            <span className="text-blue-100 text-xs font-semibold tracking-wider uppercase">Listening...</span>
+          </div>
+          <p className="text-white text-sm mt-2 font-medium leading-tight drop-shadow-md italic opacity-90 transition-all duration-200">
+            {currentTranscript || "Say something..."}
+          </p>
+        </div>
+
+        {/* Phase 4: Thinking Overlay */}
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: `translate(-50%, -50%) scale(${isThinking ? 1 : 0.8})`,
+          opacity: isThinking ? 1 : 0,
+          transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+          pointerEvents: 'none',
+          zIndex: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
+          <div className="flex gap-1">
+            <div className="w-2 h-2 rounded-full bg-white animate-bounce [animation-delay:-0.3s]" />
+            <div className="w-2 h-2 rounded-full bg-white animate-bounce [animation-delay:-0.15s]" />
+            <div className="w-2 h-2 rounded-full bg-white animate-bounce" />
+          </div>
+          <span className="text-white text-[10px] font-bold tracking-[0.2em] uppercase opacity-60">Thinking</span>
+        </div>
+
+        {/* Phase 1: Passive/Idle Hint */}
+        <div style={{
+          position: 'absolute',
+          bottom: 12,
+          right: 12,
+          opacity: isPassive ? 0.6 : 0,
+          transition: 'opacity 0.6s ease',
+          pointerEvents: 'none'
+        }}>
+           <span className="text-white/40 text-[10px] font-medium tracking-tight">Say "Hi Belli" to start...</span>
         </div>
 
         {/* Store Progress Indicator */}

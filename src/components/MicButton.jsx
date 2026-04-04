@@ -52,7 +52,7 @@ export default function MicButton() {
     const handleKeyDown = (e) => {
       if (e.code === 'Space' && !e.repeat && document.activeElement?.tagName !== 'INPUT') {
         e.preventDefault();
-        if (avatarState === AVATAR_STATES.IDLE) {
+        if (avatarState === AVATAR_STATES.LISTENING || avatarState === AVATAR_STATES.IDLE) {
           setIsPressed(true);
           startRecording();
         }

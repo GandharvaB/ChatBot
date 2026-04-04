@@ -4,20 +4,26 @@ import { create } from 'zustand';
 export const AVATAR_STATES = {
   GREETING: 'GREETING',
   IDLE: 'IDLE',
+  PASSIVE: 'PASSIVE', // New: Siri-style background listening
   LISTENING: 'LISTENING',
   THINKING: 'THINKING',
   SPEAKING: 'SPEAKING',
   EMOTING: 'EMOTING',
+  ERROR: 'ERROR',      // New: failure state
+  SLEEPING: 'SLEEPING', // New: 10m timeout state
 };
 
 // Valid state transitions
 const VALID_TRANSITIONS = {
-  [AVATAR_STATES.GREETING]: [AVATAR_STATES.IDLE],
-  [AVATAR_STATES.IDLE]: [AVATAR_STATES.LISTENING, AVATAR_STATES.SPEAKING, AVATAR_STATES.EMOTING, AVATAR_STATES.GREETING],
-  [AVATAR_STATES.LISTENING]: [AVATAR_STATES.THINKING, AVATAR_STATES.IDLE],
-  [AVATAR_STATES.THINKING]: [AVATAR_STATES.SPEAKING, AVATAR_STATES.IDLE],
-  [AVATAR_STATES.SPEAKING]: [AVATAR_STATES.IDLE, AVATAR_STATES.LISTENING, AVATAR_STATES.EMOTING],
-  [AVATAR_STATES.EMOTING]: [AVATAR_STATES.IDLE, AVATAR_STATES.LISTENING],
+  [AVATAR_STATES.GREETING]: [AVATAR_STATES.LISTENING, AVATAR_STATES.SPEAKING, AVATAR_STATES.IDLE, AVATAR_STATES.PASSIVE],
+  [AVATAR_STATES.IDLE]: [AVATAR_STATES.LISTENING, AVATAR_STATES.SPEAKING, AVATAR_STATES.EMOTING, AVATAR_STATES.GREETING, AVATAR_STATES.PASSIVE],
+  [AVATAR_STATES.PASSIVE]: [AVATAR_STATES.LISTENING, AVATAR_STATES.ERROR],
+  [AVATAR_STATES.LISTENING]: [AVATAR_STATES.THINKING, AVATAR_STATES.LISTENING, AVATAR_STATES.GREETING, AVATAR_STATES.IDLE, AVATAR_STATES.PASSIVE, AVATAR_STATES.ERROR],
+  [AVATAR_STATES.THINKING]: [AVATAR_STATES.SPEAKING, AVATAR_STATES.LISTENING, AVATAR_STATES.IDLE, AVATAR_STATES.PASSIVE, AVATAR_STATES.ERROR],
+  [AVATAR_STATES.SPEAKING]: [AVATAR_STATES.LISTENING, AVATAR_STATES.EMOTING, AVATAR_STATES.IDLE, AVATAR_STATES.THINKING, AVATAR_STATES.PASSIVE, AVATAR_STATES.ERROR],
+  [AVATAR_STATES.EMOTING]: [AVATAR_STATES.LISTENING, AVATAR_STATES.IDLE, AVATAR_STATES.PASSIVE],
+  [AVATAR_STATES.ERROR]: [AVATAR_STATES.PASSIVE, AVATAR_STATES.IDLE],
+  [AVATAR_STATES.SLEEPING]: [AVATAR_STATES.PASSIVE, AVATAR_STATES.IDLE],
 };
 
 const useAvatarStore = create((set, get) => ({
@@ -37,7 +43,7 @@ const useAvatarStore = create((set, get) => ({
   isAudioPlaying: false,
   audioAnalyserData: new Float32Array(128),
   micVolume: 0,
-  avatarUrl: '/models/avatar.glb', // Default model
+  avatarUrl: '/models/m1.glb', // New avatar model
 
   // UI
   isLoading: true,
@@ -45,6 +51,9 @@ const useAvatarStore = create((set, get) => ({
   loadingProgress: 0,
   error: null,
   showSettings: false,
+  isWakeWordMode: true,
+  sessionEndTime: null,
+  showTimeoutWarning: false,
 
   // Settings
   settings: {
@@ -57,6 +66,7 @@ const useAvatarStore = create((set, get) => ({
   // Gesture
   activeGesture: null,
   currentEmotion: 'neutral', // neutral, happy, sad
+  isMouthOpen: false, // For procedural lip-sync
 
   // State transition with validation
   setAvatarState: (newState) => {
@@ -117,6 +127,11 @@ const useAvatarStore = create((set, get) => ({
   setAvatarUrl: (url) => set({ avatarUrl: url }),
   toggleAvaturn: () => set((state) => ({ showAvaturn: !state.showAvaturn })),
 
+  // Wake Word & Sessions
+  setWakeWordMode: (mode) => set({ isWakeWordMode: mode }),
+  setSessionEndTime: (time) => set({ sessionEndTime: time }),
+  setShowTimeoutWarning: (show) => set({ showTimeoutWarning: show }),
+
   // Settings
   updateSettings: (newSettings) =>
     set((state) => ({
@@ -127,6 +142,7 @@ const useAvatarStore = create((set, get) => ({
   setActiveGesture: (gesture) => set({ activeGesture: gesture }),
   setCurrentEmotion: (emotion) => set({ currentEmotion: emotion }),
   setGreetingDone: () => set({ greetingDone: true }),
+  setMouthOpen: (open) => set({ isMouthOpen: open }),
 
   // Get conversation context for API
   getConversationContext: () => {

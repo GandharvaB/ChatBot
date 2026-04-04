@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
 import useAvatarStore, { AVATAR_STATES } from '../../store/avatarStore';
 import { getActiveAnalyser } from '../../services/audioCapture';
 
@@ -22,67 +23,63 @@ const ALL_VISEMES = [
   'viseme_DD', 'viseme_kk', 'viseme_nn', 'viseme_RR', 'viseme_sil'
 ];
 
-export default function FaceAnimation({ morphMeshes }) {
-  useFrame((state, delta) => {
-    if (!morphMeshes || morphMeshes.length === 0) return;
+export default function FaceAnimation({ morphMeshes, boneMap }) {
+  const initialHeadQuat = useRef(null);
 
+  useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     const store = useAvatarStore.getState();
-    const analyser = getActiveAnalyser(); // From audioCapture service
+    const analyser = getActiveAnalyser();
+    const time = state.clock.elapsedTime;
 
-    // Only do lip sync during SPEAKING state with active audio analyser
-    if (store.avatarState === AVATAR_STATES.SPEAKING && analyser) {
-      const freqData = new Uint8Array(analyser.frequencyBinCount);
-      analyser.getByteFrequencyData(freqData);
-
-      // Calculate band energies
-      const getEnergy = (start, end) => {
-        let sum = 0;
-        for (let i = start; i < Math.min(end, freqData.length); i++) {
-          sum += freqData[i];
-        }
-        return sum / ((end - start) * 255); // Normalize 0-1
-      };
-
-      const lowEnergy = Math.min(0.6, getEnergy(VISEME_BANDS.low.start, VISEME_BANDS.low.end) * 1.2);
-      const midEnergy = Math.min(0.8, getEnergy(VISEME_BANDS.mid.start, VISEME_BANDS.mid.end) * 1.0);
-      const highEnergy = Math.min(0.8, getEnergy(VISEME_BANDS.high.start, VISEME_BANDS.high.end) * 1.2);
-
-      const lerpFactor = dt * 15; // smooth fast interpolation
-
-      morphMeshes.forEach(mesh => {
-        const dict = mesh.morphTargetDictionary;
-        const inf = mesh.morphTargetInfluences;
-        if (!dict || !inf) return;
-
-        const applyTarget = (visemeArray, energy) => {
-          visemeArray.forEach(name => {
-            if (dict[name] !== undefined) {
-              inf[dict[name]] += (energy - inf[dict[name]]) * lerpFactor;
-            } else if (name === 'jawOpen' && dict['mouthOpen'] !== undefined) {
-              inf[dict['mouthOpen']] += (energy - inf[dict['mouthOpen']]) * lerpFactor;
-            }
-          });
+    // 1. DETERMINE "MOUTH ENERGY" (how much the mouth should be open)
+    let energy = 0;
+    if (store.avatarState === AVATAR_STATES.SPEAKING) {
+      if (analyser) {
+        const freqData = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(freqData);
+        const getEnergy = (start, end) => {
+          let sum = 0;
+          for (let i = start; i < Math.min(end, freqData.length); i++) {
+            sum += freqData[i];
+          }
+          return sum / ((end - start) * 255);
         };
+        energy = Math.min(0.8, getEnergy(VISEME_BANDS.low.start, VISEME_BANDS.low.end) * 1.5);
+      } else if (store.isMouthOpen) {
+        energy = 0.3 + Math.sin(time * 18) * 0.2; // Fast rhythmic mashing
+      }
+    }
 
-        applyTarget(VISEME_BANDS.low.visemes, lowEnergy);
-        applyTarget(VISEME_BANDS.mid.visemes, midEnergy);
-        applyTarget(VISEME_BANDS.high.visemes, highEnergy);
-      });
-
-    } else {
-      // Smoothly decay all viseme weights when not speaking
+    // 2. APPLY TO MORPH TARGETS (if available)
+    if (morphMeshes && morphMeshes.length > 0) {
+      const lerpFactor = dt * 15;
       morphMeshes.forEach(mesh => {
         const dict = mesh.morphTargetDictionary;
         const inf = mesh.morphTargetInfluences;
         if (!dict || !inf) return;
 
-        ALL_VISEMES.forEach((name) => {
-          if (dict[name] !== undefined && inf[dict[name]] > 0.001) {
-            inf[dict[name]] *= 0.85; // Faster decay
+        ALL_VISEMES.forEach(name => {
+          if (dict[name] !== undefined) {
+            const target = (energy > 0.01 && VISEME_BANDS.low.visemes.includes(name)) ? energy : 0;
+            inf[dict[name]] += (target - inf[dict[name]]) * lerpFactor;
           }
         });
       });
+    }
+
+    // 3. APPLY TO BONES (Procedural fallback for models like M1 without morphs)
+    // We rotate the head slightly downward when speaking to simulate jaw-opening if no jaw bone is found.
+    const head = boneMap?.Head;
+    if (head && (!morphMeshes || morphMeshes.length === 0)) {
+       if (!initialHeadQuat.current) initialHeadQuat.current = head.quaternion.clone();
+       
+       // Rhythmic "jaw-waggle" via head rotation
+       const jawWaggle = energy * 0.15; // 0 to 0.15 radians (~8 degrees)
+       const targetQuat = initialHeadQuat.current.clone().multiply(
+         new THREE.Quaternion().setFromEuler(new THREE.Euler(jawWaggle, 0, 0))
+       );
+       head.quaternion.slerp(targetQuat, dt * 20);
     }
   });
 

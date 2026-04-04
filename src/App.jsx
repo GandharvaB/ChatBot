@@ -1,6 +1,7 @@
 import React from 'react';
 import { WidgetShell } from './components/WidgetShell';
 import { DevControls } from './components/DevControls';
+import { VoiceManager } from './voice/VoiceManager';
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
       <DevControls />
 
       {/* The Actual Voice AI Widget */}
+      <VoiceManager />
       <WidgetShell />
 
     </div>

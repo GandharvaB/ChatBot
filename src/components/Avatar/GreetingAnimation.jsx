@@ -23,19 +23,34 @@ export default function GreetingAnimation({ scene }) {
 
     // Build a mixer on the MAIN avatar scene so bone names resolve correctly
     const mixer = new THREE.AnimationMixer(scene);
+    
+    // Clone and retarget the clip
+    const originalClip = animations[0];
+    const clip = originalClip.clone();
+    clip.tracks = clip.tracks.filter(track => {
+      if (track.name.toLowerCase().includes('.position')) return false;
+      track.name = track.name.replace(/^.*[:|]/, '');
+      return !!scene.getObjectByName(track.name.split('.')[0]);
+    });
+
+    if (clip.tracks.length === 0) {
+      console.warn('[GreetingAnimation] No usable tracks found after retargeting.');
+      useAvatarStore.getState().setAvatarState(AVATAR_STATES.LISTENING);
+      useAvatarStore.getState().setGreetingDone();
+      return;
+    }
+
     mixerRef.current = mixer;
 
-    const clip   = animations[0]; // "The-person-is-w" (wave greeting)
     const action = mixer.clipAction(clip);
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
-    action.timeScale = 1.0;
     action.play();
 
     const onFinished = () => {
       if (doneRef.current) return;
       doneRef.current = true;
-      useAvatarStore.getState().setAvatarState(AVATAR_STATES.IDLE);
+      useAvatarStore.getState().setAvatarState(AVATAR_STATES.LISTENING);
       useAvatarStore.getState().setGreetingDone();
     };
 

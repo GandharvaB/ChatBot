@@ -31,42 +31,56 @@ export default function ExplainingAnimation({ scene }) {
     // Clone the clip so we can safely mutate track names for retargeting
     const clip = animations[0].clone();
 
-    // Retargeting: Clean up names and prevent avatar floating/sinking
+    // 1. UNIVERSAL RETARGETING: Strip all prefixes (e.g. 'mixamorig:', 'Node|') 
+    // to match M1.glb's clean bone names.
     clip.tracks = clip.tracks.filter((track) => {
-      // 1. Remove position tracks (Mixamo uses different leg lengths/scales)
-      if (track.name.endsWith('.position')) return false;
+      // Always remove position tracks for humanoid retargeting (avoids scale/floating issues)
+      if (track.name.toLowerCase().includes('.position')) return false;
 
-      // 2. Remove common Mixamo FBX prefixes
-      track.name = track.name.replace(/^.*mixamorig/i, '');
-      track.name = track.name.replace(/^.*?\|/, '');
+      // Strip prefixes: 'mixamorig:Hips.rotation' -> 'Hips.rotation'
+      const oldName = track.name;
+      track.name = track.name.replace(/^.*[:|]/, '');
 
+      // 2. SAFETY CHECK: Does this bone actually exist in our target scene?
+      const boneName = track.name.split('.')[0];
+      const targetNode = scene.getObjectByName(boneName);
+      
+      if (!targetNode) {
+        // console.warn(`[ExplainingAnimation] Skipping track for missing bone: ${boneName} (was ${oldName})`);
+        return false;
+      }
+      
       return true;
     });
 
-    if (clip.tracks.length === 0) return;
+    if (clip.tracks.length === 0) {
+      console.error('[ExplainingAnimation] Failed: No compatible tracks left after retargeting!');
+      return;
+    }
 
     const action = mixer.clipAction(clip);
     action.setLoop(THREE.LoopRepeat, Infinity);
-    action.clampWhenFinished = false;
-    action.timeScale = 1.0;
-    action.fadeIn(0.3);
     action.play();
 
     mixerRef.current = mixer;
 
     return () => {
-      // Smooth fade-out, then clean up
-      action.fadeOut(0.3);
+      action.fadeOut(0.2);
       const t = setTimeout(() => {
         mixer.stopAllAction();
         mixer.uncacheRoot(scene);
-      }, 350);
+      }, 250);
       return () => clearTimeout(t);
     };
   }, [scene, animations]);
 
   useFrame((_, delta) => {
-    mixerRef.current?.update(Math.min(delta, 0.05));
+    try {
+      mixerRef.current?.update(Math.min(delta, 0.05));
+    } catch (e) {
+      console.error('[ExplainingAnimation] Mixer update crash:', e);
+      mixerRef.current = null;
+    }
   });
 
   return null;
